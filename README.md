@@ -64,7 +64,7 @@ To install and run Kururin, follow these steps:
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgements
-Special thanks to Tachikawa City for the use of Kururin, their mascot character, as the application's icon.
+Special thanks to Tachikawa City for use of Kururin, their mascot character, as the application's icon.
 
 ---
 
@@ -134,4 +134,4 @@ Special thanks to Tachikawa City for the use of Kururin, their mascot character,
 このプロジェクトはMITライセンスの下でライセンスされています。詳細はLICENSEファイルを参照してください。
 
 ## 謝辞
-アプリケーションのアイコンとしてマスコットキャラクター「くるりん」の使用を許可してくださった立川市に特別な感謝を申し上げます。
+アプリケーションのアイコンとして、大好きな立川市のマスコットキャラクター「くるりん」を使用させていただいております。ありがとうございます。
