@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responsive Sidebar with Audio Features</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+</head>
+<body>
+    <button class="btn btn-secondary toggle-button">|||</button>
+
+    <div id="sidebar" class="sidebar bg-dark">
+        <button id="reflesh-new" class="btn btn-primary my-2">新規録音</button>
+
+        <div class="recording-log text-white">
+            <h3>録音ログ</h3>
+            <ul class="list-unstyled">
+                <li>録音1 - [日付]</li>
+                <li>録音2 - [日付]</li>
+                <!-- More logs can be added here -->
+            </ul>
+            
+            <a href="settings.html" class="btn btn-link text-white mb-2">設定</a>
+            
+            <hr>
+            <a href="/logout" class="btn btn-danger">ログアウト</a>
+
+
+
+        </div>
+    </div>
+
+    <div id="main-content" class="main-content">
+        <!-- Main content here -->
+
+
+        <div class="container">
+            <div class="button-group text-center">
+                {% if session['username'] %}
+                <p>{{ session['username'] }} としてログインしています</p>
+                {% endif %}
+                <hr>
+
+                <button class="btn btn-primary" onclick="startRecording()" style="display: none;">Start Recording</button>
+                <button class="btn btn-secondary" onclick="stopRecording()" style="display: none;" disabled>Stop Recording</button>
+                <button class="btn btn-info" onclick="toggleAutoRecord()" id="autoRecordBtn">文字おこしを開始する</button>
+            </div>
+          
+
+            <div class="button-group text-center">
+
+              <button class="btn btn-info" onclick="window.open('/archives', '_blank')">日時指定</button>
+              <button class="btn btn-info" onclick="window.open('/lists', '_blank')">一覧</button>
+            </div>
+          
+          </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</body>
+</html>

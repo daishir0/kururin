@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Record and Transcribe</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+
+<style>
+  body {
+    padding: 20px;
+  }
+  .button-group {
+    margin-bottom: 20px;
+  }
+  #transcriptionResult {
+    border: 1px solid #ccc;
+    padding: 10px;
+    min-height: 200px; /* 最小の高さを設定 */
+    margin-top: 20px;
+    overflow: auto; /* 内容が枠を超えた場合にスクロールバーを表示 */
+    resize: vertical; /* ユーザーが手動で高さを調整できるようにする（必要に応じて） */
+  }
+
+  /* ... せわしないアニメーション ... */
+    @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+    20%, 40%, 60%, 80% { transform: translateX(10px); }
+  }
+  .shake {
+    animation: shake 0.5s infinite;
+  }
+  .image-container {
+    display: flex; /* Flexboxレイアウトを使用 */
+    justify-content: center; /* 水平方向に中央揃え */
+    position: relative; /* 子要素の絶対位置の基準点となる */
+  }
+
+  .image-container img {
+    max-width: 100%; /* 画像がコンテナを超えないように調整 */
+    display: inline-block; /* 画像がインライン要素のように振る舞うように設定 */
+  }
+
+  .overlay {
+    position: absolute;
+    bottom: 0; /* kururin画像の下部に配置 */
+    left: 50%; /* 親要素の中央に配置 */
+    transform: translateX(-50%); /* 画像自体の中央を基準点にする */
+    z-index: 10; /* kururin画像の上に表示 */
+    display: none; /* 初期状態では非表示 */
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- フォロワーであることを示すメッセージ -->
+{% if session.get('follower') == 1 %}
+<div class="alert alert-info" role="alert">
+  あなたはフォローワーです。
+</div>
+<script>
+  // フォロワーの場合、'文字起こしを開始する'ボタンを無効にする
+  window.addEventListener('load', function() {
+    document.getElementById('autoRecordBtn').disabled = true;
+  });
+
+  // フォロワーの場合、録音を試みるとアラートを表示
+  function startRecording() {
+    alert('録音できるのは1人までです。録音しているひろが終わって、ログインをしなおしてください');
+  }
+
+  // '録音停止'の関数をオーバーライドして、何もしないようにする
+  function stopRecording() {
+    // 何もしない
+  }
+</script>
+{% endif %}
+
+
+<div class="container">
+  <div class="button-group text-center">
+    <button class="btn btn-primary" onclick="startRecording()" style="display: none;">
+        <i class="fas fa-play"></i> Start Recording
+    </button>
+    <button class="btn btn-secondary" onclick="stopRecording()" style="display: none;" disabled>
+        <i class="fas fa-stop"></i> Stop Recording
+    </button>
+    <button class="btn btn-info" onclick="toggleAutoRecord()" id="autoRecordBtn">
+        <i class="fas fa-microphone"></i> 文字おこしを開始する
+    </button>
+</div>
+
+
+  <div class="image-container">
+  <img src="{{ url_for('static', filename='kururin.jpg') }}" alt="Kururin">
+  <img src="{{ url_for('static', filename='pencil.png') }}"  id="Pencil" alt="Pencil" class="overlay" style="display: none;">
+  </div>
+
+  <div class="button-group text-center">
+  <!-- <button class="btn btn-info" onclick="window.open('/archives', '_blank')">日時指定</button>
+  <button class="btn btn-info" onclick="window.open('/lists', '')">一覧</button>
+  <button class="btn btn-info" onclick="window.open('/bulk_upload', '')">Upload</button>
+  -->
+  <a href="/lists" class="btn btn-info"><i class="fas fa-list"></i> 一覧</a>
+  <a href="/search" class="btn btn-info"><i class="fas fa-search"></i> 検索</a>
+  <a href="/bulk_upload" class="btn btn-info"><i class="fas fa-upload"></i> Upload</a>
+  <a href="/logout" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i></a>
+    
+  </div>
+
+  <div class="button-group text-center">
+    今月の記録時間は{{ current_month_time }}です。（先月は{{ prev_month_time }}）
+  </div>
+  <div class="button-group text-center">
+    （少し前の書きおこしです）
+  </div>
+
+  <div id="transcriptionResult" class="transcription-result"></div>
+
+  <hr>
+  <div class="button-group text-center">
+    {% if session['username'] %}
+    <p>[Login] {{ session['username'] }}</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+let mediaRecorder;
+let autoRecordInterval;
+let isAutoRecording = false;
+let audioChunks = [];
+
+function startRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+
+      mediaRecorder.addEventListener("dataavailable", event => {
+        audioChunks.push(event.data);
+      });
+
+      mediaRecorder.addEventListener("stop", () => {
+        const audioBlob = new Blob(audioChunks);
+        const formData = new FormData();
+        formData.append("audio_data", audioBlob);
+
+        fetch("/upload", { method: "POST", body: formData })
+          .then(response => response.json())
+          .then(data => {
+            console.log(data.message);
+          })
+          .catch(error => {
+            console.error(error.message);
+          });
+
+        audioChunks = [];
+      });
+
+      document.querySelector("button[onclick='startRecording()']").disabled = true;
+      document.querySelector("button[onclick='stopRecording()']").disabled = false;
+    })
+    .catch(error => {
+      console.error(error.message);
+    });
+}
+
+function stopRecording() {
+  mediaRecorder.stop();
+  document.querySelector("button[onclick='startRecording()']").disabled = false;
+  document.querySelector("button[onclick='stopRecording()']").disabled = true;
+
+  fetchDataAndDisplay();
+  shakingAnimation();
+
+}
+
+function shakingAnimation() {
+  // せわしないアニメーション
+  var pencilImage = document.getElementById('Pencil');
+
+  // Start shaking animation
+  pencilImage.style.display = 'block';
+  pencilImage.classList.add('shake');
+
+  setTimeout(function() {
+    // Stop shaking after 3 seconds
+    pencilImage.classList.remove('shake');
+    pencilImage.style.display = 'none'; // ここで非表示に設定
+  }, 2000);
+
+}
+
+function showPencil() {
+    var pencilImage = document.getElementById('Pencil');
+    pencilImage.style.display = 'block'; // 鉛筆画像を表示する
+}
+
+function toggleAutoRecord() {
+  let autoRecordButton = document.getElementById('autoRecordBtn');
+  if (!isAutoRecording) {
+    startRecording();
+    autoRecordButton.textContent = '（くるりんは、耳をすませています）';
+    isAutoRecording = true;
+    autoRecordInterval = setInterval(() => {
+      stopRecording();
+      setTimeout(startRecording, 1000); // 1秒後に再開
+    }, 60000); // 1分ごとに録音を停止・再開
+  } else {
+    clearInterval(autoRecordInterval);
+    stopRecording();
+    autoRecordButton.textContent = '文字おこしを開始する';
+    isAutoRecording = false;
+  }
+}
+
+// 指定されたURLからデータを取得し、transcriptionResultに表示する関数
+function fetchDataAndDisplay() {
+  fetch('/latest_log')
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('ネットワークレスポンスが異常です。');
+      }
+      return response.text();
+    })
+    .then(data => {
+      document.getElementById('transcriptionResult').innerHTML = data; // データをHTMLとして表示
+    })
+    .catch(error => {
+      console.error('データの取得中にエラーが発生しました:', error);
+      document.getElementById('transcriptionResult').textContent = 'データの取得に失敗しました。';
+    });
+}
+
+// 画面ロード時に関数を実行し、定期的に再実行する
+window.addEventListener('load', function() {
+
+  // 初回のデータ取得と表示
+  fetchDataAndDisplay();
+
+  // 一覧ボタンをフォーカス
+  document.querySelector('a[href="/lists"]').focus();
+
+});
+
+</script>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/js/bootstrap.min.js"></script>
+
+</body>
+</html>

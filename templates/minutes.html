@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>議事録フォーマット</title>
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<style>
+  .header-cell {
+    background-color: #e7f1ff; /* 薄いブルーのヘッダー */
+    font-weight: bold;
+  }
+  .table {
+    border: 2px solid #343a40; /* 外枠を濃いグレーに */
+  }
+  .table-bordered th,
+  .table-bordered td {
+    border: 1px solid #343a40; /* セルの枠線を濃いグレーに */
+  }
+  .table thead th {
+    vertical-align: bottom;
+    border-bottom: 2px solid #343a40; /* ヘッダーの下枠線を濃いグレーに */
+  }
+  /* 追加のカスタムスタイルがあればここに追加 */
+  .summary-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e3e6e8;
+            border-radius: 0.25rem;
+            padding: 20px;
+            margin-bottom: 20px;
+            white-space: pre-wrap; /* これが改行と空白を保持します */
+  }
+  .image-container {
+    position: relative;
+    display: inline-block; /* これによりテキストが画像の横に来る */
+  }
+  .balloon1-left {
+  position: relative;
+  display: inline-block;
+  margin: 1.5em 0 1.5em 15px;
+  padding: 7px 10px;
+  min-width: 120px;
+  max-width: 100%;
+  color: #555;
+  font-size: 16px;
+  background: #e0edff;
+}
+.balloon1-left:before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -30px;
+  margin-top: -15px;
+  border: 15px solid transparent;
+  border-right: 15px solid #e0edff;
+}
+.balloon1-left p {
+  margin: 0;
+  padding: 0;
+}
+</style>
+</head>
+<body>
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-lg-12">
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <h1 colspan="4" class="text-center header-cell">
+                会議議事録
+            </h1>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="2" class="header-cell">記載日　{{ day|safe }}</td>
+            <td colspan="1" class="header-cell">記載者　くるりんAI</td>
+            <td colspan="1" class="header-cell">場所　</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="header-cell">出席者</td>
+            <td colspan="2" class="header-cell">欠席者</td>
+          </tr>
+          <tr>
+            <td colspan="4" class="header-cell">
+              <p class="lead" style="white-space: pre-wrap;">{{ summary|safe }}</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  <div class="row">
+    <div class="image-container">
+      <img src="{{ url_for('static', filename='kururin.jpg') }}" alt="Kururin">
+      <div class="balloon1-left">
+        <p>書いてみました。どうですか？</p>
+        <p>以下の書き起こしを参考に作りました。</p>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="image-container">
+      <hr>
+      <p class="lead" style="white-space: pre-wrap;">{{ transcripts|safe }}</p>
+    </div>
+  </div>
+
+
+</div>
+<!-- Optional JavaScript -->
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.9.11/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/css/bootstrap.min.css">
+  <style>
+    #transcriptionResult {
+      height: calc(100vh - 350px); /* ここで150pxは上部の要素の合計高さに置き換えてください */
+      overflow-y: scroll;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="btn btn-secondary mb-3">TOPに戻る</a>
+    <div class="date-input-container my-4">
+      <input type="date" id="dateInput" class="form-control">
+      <input type="time" id="timeInput" class="form-control">
+      <button id="fetchDataBtn" class="btn btn-primary">1時間分データを取得する</button>
+      <button id="downloadTextBtn" class="btn btn-secondary">テキストDL</button>
+    </div>
+
+    <div id="transcriptionResult" class="transcription-result border p-3" overflow-y: scroll;"></div>
+
+    <hr>
+    <div class="button-group text-center">
+      <button id="createMinutesBtn" class="btn btn-info">これらで、議事録を作成する</button>
+    </div>
+
+  </div>
+
+  <script>
+    document.getElementById('fetchDataBtn').addEventListener('click', function() {
+      var date = document.getElementById('dateInput').value;
+      var time = document.getElementById('timeInput').value;
+      var formattedTime = time.length === 5 ? time + ':00' : time; // 4文字の場合のみ秒を追加
+      var formattedDateTime = date.replace(/-/g, '') + '-' + formattedTime.replace(/:/g, '');
+
+      // 議事録作成ボタンのリンクを更新
+      var createMinutesBtn = document.getElementById('createMinutesBtn');
+      createMinutesBtn.setAttribute('onclick', `window.open('/minutes?s=${formattedDateTime}', '_blank')`);
+
+      fetch(`/logs?s=${formattedDateTime}`)
+        .then(response => response.text())
+        .then(data => {
+          var resultDiv = document.getElementById('transcriptionResult');
+          resultDiv.innerHTML = '';
+          displayTranscripts(data);
+        });
+    });
+
+
+    document.getElementById('downloadTextBtn').addEventListener('click', function() {
+      var allParagraphs = document.querySelectorAll('#transcriptionResult p');
+      var combinedText = '';
+
+      allParagraphs.forEach(function(paragraph) {
+        combinedText += paragraph.textContent + ' ';
+      });
+
+      downloadText(combinedText, 'transcription.txt');
+    });
+
+    function downloadText(text, filename) {
+      var element = document.createElement('a');
+      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+      element.setAttribute('download', filename);
+
+      element.style.display = 'none';
+      document.body.appendChild(element);
+
+      element.click();
+
+      document.body.removeChild(element);
+    }
+
+
+    function displayTranscripts(data) {
+      var transcripts = JSON.parse(data);
+      var resultDiv = document.getElementById('transcriptionResult');
+      var specialText = ""; // 特定のテキストを抽出するための変数
+      resultDiv.innerHTML = '';
+
+      transcripts.forEach(function(transcript) {
+        // データが.pngで終わるかどうかをチェック
+        if (transcript.content.endsWith('.png')) {
+          // 画像ファイルの場合の処理
+          var img = document.createElement('img');
+          img.src = '/thumbimg/' + transcript.content; // サムネイルのパスをsrc属性に設定
+          img.style.maxWidth = '100px'; // サムネイルサイズに設定
+          img.style.maxHeight = '100px';
+          img.alt = 'transcript image'; // 代替テキストを設定
+          img.style.cursor = 'pointer'; // カーソルをポインターに設定
+          resultDiv.appendChild(img);
+
+          // 画像クリック時のイベントリスナーを追加
+          img.addEventListener('click', function() {
+            // フルサイズ画像を表示するためのモーダルを作成
+            var modal = document.createElement('div');
+            modal.style.position = 'fixed';
+            modal.style.zIndex = '1000';
+            modal.style.left = '0';
+            modal.style.top = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            modal.style.display = 'flex';
+            modal.style.justifyContent = 'center';
+            modal.style.alignItems = 'center';
+
+            // フルサイズ画像をモーダルに追加
+            var fullImg = document.createElement('img');
+            fullImg.src = '/img/' + transcript.content; // フルサイズ画像のパスをsrc属性に設定
+            fullImg.style.maxWidth = '90%'; // 画面の90%まで拡大して表示
+            fullImg.style.maxHeight = '90%';
+            modal.appendChild(fullImg);
+
+            // モーダルクリック時にモーダルを閉じるイベントリスナーを追加
+            modal.addEventListener('click', function() {
+              modal.remove();
+            });
+
+            // モーダルをbodyに追加して表示
+            document.body.appendChild(modal);
+          });
+        } else {
+          // 既存のテキスト処理
+          var newParagraph = document.createElement('p');
+          newParagraph.textContent = transcript.content;
+          newParagraph.id = transcript.filename;
+          newParagraph.addEventListener("dblclick", makeEditable);
+          newParagraph.addEventListener("blur", sendEditedText);
+
+          var playButton = createPlayButton(transcript.filename);
+          resultDiv.appendChild(playButton);
+          resultDiv.appendChild(newParagraph);
+        }
+      });
+    }
+
+
+
+
+    function createPlayButton(filename) {
+    var container = document.createElement('div');
+    container.className = 'audio-player-container';
+
+    var timePart = filename.slice(9, 15); 
+    var formattedTime = `${timePart.slice(0, 2)}時${timePart.slice(2, 4)}分`; 
+
+    var playButton = document.createElement('button');
+    playButton.innerHTML = '▶';
+    playButton.className = 'play-button btn btn-primary btn-sm';
+    container.appendChild(playButton);
+
+    var timeSpan = document.createElement('span');
+    timeSpan.textContent = formattedTime;
+    timeSpan.className = 'time-display'; 
+    container.appendChild(timeSpan);
+
+    var audio = new Audio();
+    var isPlaying = false;
+
+    var seekBar = document.createElement('input');
+    seekBar.type = 'range';
+    seekBar.value = 0;
+    seekBar.min = 0;
+    seekBar.step = 1;
+    seekBar.className = 'audio-seek-bar';
+    container.appendChild(seekBar);
+
+    audio.onloadedmetadata = function() {
+        seekBar.max = audio.duration;
+    };
+
+    audio.ontimeupdate = function() {
+        seekBar.value = audio.currentTime;
+    };
+
+    seekBar.oninput = function() {
+        audio.currentTime = seekBar.value;
+    };
+
+    playButton.onclick = function() {
+        if (!audio.src) {
+            audio.src = `/audio/${filename}.mp3`;
+            audio.oncanplaythrough = function() {
+                if (isPlaying) {
+                    audio.play();
+                }
+            };
+            audio.onended = function() {
+                playButton.innerHTML = '▶';
+                isPlaying = false;
+            };
+        }
+        if (!isPlaying) {
+            audio.play();
+            playButton.innerHTML = '■';
+            isPlaying = true;
+        } else {
+            audio.pause();
+            playButton.innerHTML = '▶';
+            isPlaying = false;
+        }
+    };
+
+    // 削除ボタンの追加
+    var deleteButton = document.createElement('button');
+    deleteButton.innerHTML = '削除';
+    deleteButton.className = 'delete-button btn btn-danger btn-sm';
+    container.appendChild(deleteButton);
+
+    // 削除ボタンのイベントリスナーを設定
+    deleteButton.onclick = function() {
+        if (confirm('本当にこのファイルを削除してよろしいですか？')) {
+            fetch(`/delete_file?filename=${filename}`, {
+                method: 'DELETE'
+            }).then(response => {
+                if (response.ok) {
+                    container.remove(); // UIからコンテナを削除
+                    alert('ファイルが正常に削除されました。');
+                } else {
+                    alert('ファイルの削除中にエラーが発生しました。');
+                }
+            }).catch(error => {
+                console.error('Error:', error);
+                alert('ファイルの削除中にエラーが発生しました。');
+            });
+        }
+    };
+
+    return container;
+}
+
+
+
+
+    function makeEditable(event) {
+      var textDiv = event.target;
+      document.querySelectorAll('#transcriptionResult p').forEach(p => {
+        if (p !== textDiv) {
+          p.contentEditable = false;
+          p.style.backgroundColor = "";
+        }
+      });
+      textDiv.contentEditable = true;
+      textDiv.style.backgroundColor = "#ccffcc";
+      textDiv.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Enterキーによる改行を防止
+        }
+      });
+    }
+
+    function sendEditedText(event) {
+        var textDiv = event.target;
+        var filename = textDiv.id;
+        var editedText = textDiv.textContent;
+
+        // サニタイズ処理: HTMLタグを除去
+        editedText = editedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+        fetch("/update_transcription", {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ filename: filename, text: editedText })
+        }).then(response => {
+            if (response.ok) {
+                console.log("Transcription updated successfully");
+            }
+        });
+        textDiv.contentEditable = false;
+        textDiv.style.backgroundColor = "";
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+    // 現在の日時を取得
+    var now = new Date();
+
+    // 日本時間に調整（UTC+9）
+    now.setHours(now.getHours() + 9);
+
+    // yyyy-mm-dd 形式でフォーマット
+    var today = now.toISOString().split('T')[0];
+    document.getElementById('dateInput').value = today;
+
+    // Flaskから渡された日時を取得
+    var datetimeStr = "{{ datetime_str }}";
+    if (!datetimeStr) {
+        // 「Flaskから渡された日時」がない場合、現在の日時を使用
+        now.setMinutes(now.getMinutes() - 30); // 30分前に設定
+        document.getElementById('dateInput').value = now.toISOString().split('T')[0]; // yyyy-mm-dd 形式でセット
+        document.getElementById('timeInput').value = now.toTimeString().split(' ')[0]; // hh:mm:ss 形式でセット
+    } else {
+        // 「Flaskから渡された日時」がある場合、それをフォーマットしてセット
+        var datePart = datetimeStr.slice(0, 8); // yyyyMMdd
+        var timePart = datetimeStr.slice(9, 15); // hhmmss
+
+        // yyyy-mm-dd 形式に変換
+        var formattedDate = datePart.slice(0, 4) + '-' + datePart.slice(4, 6) + '-' + datePart.slice(6, 8);
+        document.getElementById('dateInput').value = formattedDate;
+
+        // hh:mm 形式に変換
+        var formattedTime = timePart.slice(0, 2) + ':' + timePart.slice(2, 4);
+        document.getElementById('timeInput').value = formattedTime;
+    }
+
+    // データ取得ボタンを自動的にクリック
+    document.getElementById('fetchDataBtn').click();
+});
+
+
+
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/js/bootstrap.min.js"></script>

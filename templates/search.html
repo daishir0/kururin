@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/css/bootstrap.min.css">
+  <style>
+    #transcriptionResult {
+        height: calc(100vh - 200px); /* Adjust this value based on the total height of elements above */
+        overflow-y: scroll;
+    }
+    .highlight {
+        background-color: yellow;
+    }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <a href="/" class="btn btn-secondary mb-3">TOPに戻る</a>
+    <div class="search-input-container my-4">
+      <input type="text" id="searchInput" class="form-control" placeholder="検索単語を入力">
+      <button id="searchDataBtn" class="btn btn-primary mt-2">検索</button>
+  </div>
+
+    <div id="transcriptionResult" class="transcription-result border p-3"></div>
+
+    <hr>
+  </div>
+
+  <script>
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var searchInput = document.getElementById('searchInput');
+    searchInput.focus(); // Focus on the search input field when the page loads
+
+    // Trigger search when pressing Enter in the search input field
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Prevent the default action to stop form submission
+            document.getElementById('searchDataBtn').click(); // Programmatically click the search button
+        }
+    });
+
+      
+    document.getElementById('searchDataBtn').addEventListener('click', function() {
+      var searchQuery = searchInput.value;
+      if (searchQuery) {
+          fetch(`/search_logs?s=${encodeURIComponent(searchQuery)}`)
+              .then(response => response.json())
+              .then(data => {
+                  var resultDiv = document.getElementById('transcriptionResult');
+                  resultDiv.innerHTML = ''; // Clear the results area
+                  displayTranscripts(data); // Call the function to display search results
+              })
+              .catch(error => {
+                  console.error('Error:', error);
+              });
+      }
+  });
+});
+    function displayTranscripts(transcripts) {
+      var resultDiv = document.getElementById('transcriptionResult');
+      resultDiv.innerHTML = ''; // 結果表示領域をクリア
+      var searchQuery = document.getElementById('searchInput').value; // 検索クエリを取得
+
+      transcripts.forEach(function(transcript) {
+          var container = document.createElement('div');
+          container.className = 'transcript-container';
+  
+          var playButton = createPlayButton(transcript.filename);
+          var newParagraph = document.createElement('p');
+          newParagraph.id = transcript.filename; // 例: "20240313-193400"
+          if (searchQuery) {
+              // 検索クエリに一致する部分をハイライト
+              var regex = new RegExp(searchQuery, 'gi');
+              var highlightedText = transcript.content.replace(regex, function(match) {
+                  return `<span class="highlight">${match}</span>`;
+              });
+              newParagraph.innerHTML = highlightedText; // innerHTMLを使用してハイライトを適用
+          } else {
+              newParagraph.textContent = transcript.content;
+          }
+          newParagraph.addEventListener("dblclick", makeEditable);
+          newParagraph.addEventListener("blur", sendEditedText);
+
+          container.appendChild(playButton);
+          container.appendChild(newParagraph);
+          resultDiv.appendChild(container);
+      });
+  }
+  
+
+
+
+  function createPlayButton(filename) {
+    var container = document.createElement('div');
+    container.className = 'audio-player-container';
+
+    // ファイル名から年月日と時間を抽出
+    var datePart = filename.slice(0, 8); // yyyymmdd
+    var timePart = filename.slice(9, 13); // hhmm
+
+    // 年月日と時間をフォーマットする
+    var formattedDate = `${datePart.slice(4, 6)}月${datePart.slice(6, 8)}日`; // mm月dd日
+    var formattedTime = `${timePart.slice(0, 2)}時${timePart.slice(2, 4)}分`; // hh時mm分
+
+    // 全体の日時をフォーマットする
+    var dateTimeDisplay = `${formattedDate}${formattedTime}`; // mm月dd日hh時mm分
+
+    var playButton = document.createElement('button');
+    playButton.innerHTML = '▶';
+    playButton.className = 'play-button btn btn-primary btn-sm';
+    container.appendChild(playButton);
+
+    var timeSpan = document.createElement('span');
+    timeSpan.textContent = dateTimeDisplay; // 更新された日時表示
+    timeSpan.className = 'time-display';
+    container.appendChild(timeSpan);
+
+
+    var audio = new Audio();
+    var isPlaying = false;
+
+    var seekBar = document.createElement('input');
+    seekBar.type = 'range';
+    seekBar.value = 0;
+    seekBar.min = 0;
+    seekBar.step = 1;
+    seekBar.className = 'audio-seek-bar';
+    container.appendChild(seekBar);
+
+    var linkButton = document.createElement('a'); // リンクボタンを作成
+    linkButton.href = `/archives?s=${filename}`; // リンク先のURL
+    linkButton.target = '_blank'; // 新しいタブで開く
+    linkButton.className = 'btn btn-success'; // Bootstrapの成功ボタン（緑色）のスタイルを適用
+    linkButton.textContent = 'この会議へ'; // ボタンのテキスト
+    container.appendChild(linkButton); // コンテナにリンクボタンを追加
+    
+
+    audio.onloadedmetadata = function() {
+        seekBar.max = audio.duration;
+    };
+
+    audio.ontimeupdate = function() {
+        seekBar.value = audio.currentTime;
+    };
+
+    seekBar.oninput = function() {
+        audio.currentTime = seekBar.value;
+    };
+
+    playButton.onclick = function() {
+        if (!audio.src) {
+            audio.src = `/audio/${filename}.mp3`;
+            audio.oncanplaythrough = function() {
+                if (isPlaying) {
+                    audio.play();
+                }
+            };
+            audio.onended = function() {
+                playButton.innerHTML = '▶';
+                isPlaying = false;
+            };
+        }
+        if (!isPlaying) {
+            audio.play();
+            playButton.innerHTML = '■';
+            isPlaying = true;
+        } else {
+            audio.pause();
+            playButton.innerHTML = '▶';
+            isPlaying = false;
+        }
+    };
+
+    return container;
+}
+
+
+
+
+    function makeEditable(event) {
+      var textDiv = event.target;
+      document.querySelectorAll('#transcriptionResult p').forEach(p => {
+        if (p !== textDiv) {
+          p.contentEditable = false;
+          p.style.backgroundColor = "";
+        }
+      });
+      textDiv.contentEditable = true;
+      textDiv.style.backgroundColor = "#ccffcc";
+      textDiv.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Enterキーによる改行を防止
+        }
+    });
+    }
+
+    function sendEditedText(event) {
+      var textDiv = event.target;
+      var filename = textDiv.id;
+      var editedText = textDiv.textContent;
+
+      // サニタイズ処理: HTMLタグを除去
+      editedText = editedText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      fetch("/update_transcription", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ filename: filename, text: editedText })
+      }).then(response => {
+        if (response.ok) {
+          console.log("Transcription updated successfully");
+        }
+      });
+      textDiv.contentEditable = false;
+      textDiv.style.backgroundColor = "";
+    }
+
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/js/bootstrap.min.js"></script>

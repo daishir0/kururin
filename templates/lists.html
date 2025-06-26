@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Sets List</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+  <style>
+    body {
+      font-size: 0.9rem;
+    }
+    .date-header {
+      background-color: #f8f9fa;
+      margin-top: 1rem;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      font-weight: bold;
+    }
+    .list-group-item {
+      padding: 0.5rem 1rem;
+    }
+    .summary-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    .summary-list li {
+      background-color: #f2f2f2;
+      margin-bottom: 0.25rem;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+    }
+  </style>
+  <style>
+    .font-large {
+      font-size: 1.2rem; /* 例えば、基本のフォントサイズよりも20%大きくする */
+    }
+    body {
+      font-size: 0.9rem;
+    }
+    .date-header {
+      background-color: #f8f9fa;
+      margin-top: 1rem;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      font-weight: bold;
+    }
+    .list-group-item {
+      padding: 0.5rem 1rem;
+    }
+    .summary-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    .summary-list li {
+      background-color: #f2f2f2;
+      margin-bottom: 0.25rem;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+    }
+  </style>
+
+  <script>
+    function generateTitle(file, element) {
+      // ローディング表示を追加
+      element.textContent = "生成中...";
+      
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/generate_title', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      
+      xhr.onload = function() {
+        if (this.status == 200) {
+          var response = JSON.parse(this.responseText);
+          // タイトルを更新
+          var titleElement = document.getElementById('title-' + file);
+          if (titleElement) {
+            titleElement.textContent = response.title;
+            titleElement.classList.add('font-large');
+          }
+          element.textContent = "タイトル付与";
+        } else {
+          alert("タイトルの生成に失敗しました。");
+          element.textContent = "タイトル付与";
+        }
+      };
+      
+      xhr.onerror = function() {
+        alert("タイトルの生成に失敗しました。");
+        element.textContent = "タイトル付与";
+      };
+      
+      xhr.send(JSON.stringify({file: file}));
+    }
+
+    function fetchImportantLogs(file, element) {
+      // 既存のリスト、ローディング表示、または「マーキング箇所がありません」メッセージがあるかどうかを確認
+      var nextElement = element.nextElementSibling;
+      if (nextElement && (nextElement.classList.contains('list-group') || nextElement.id === 'loading' || nextElement.classList.contains('no-marking'))) {
+        // 既に存在する場合は削除して閉じる
+        nextElement.remove();
+        return; // 早期リターンで処理を終了
+      }
+    
+      // ローディング表示を挿入
+      var loadingMessage = '<div id="loading" class="mt-3">Loading...</div>';
+      element.insertAdjacentHTML('afterend', loadingMessage);
+    
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/important_logs?s=' + file, true);
+      xhr.onload = function() {
+        // ローディング表示を削除
+        var loadingElement = document.getElementById('loading');
+        if (loadingElement) {
+          loadingElement.remove();
+        }
+    
+        if (this.status == 200) {
+          var logs = JSON.parse(this.responseText);
+    
+          if (logs.length === 0) {
+            // データが空の場合のメッセージを表示し、クラスで識別
+            element.insertAdjacentHTML('afterend', '<div class="mt-3 no-marking">マーキング箇所がありません</div>');
+            return;
+          }
+    
+          var list = '<ul class="list-group mt-3">';
+          logs.forEach(function(log) {
+            var cleanedLog = log.replace(/<br>/g, ' '); 
+            list += '<li class="list-group-item">' + cleanedLog + '</li>';
+          });
+          list += '</ul>';
+          element.insertAdjacentHTML('afterend', list);
+        }
+      };
+      xhr.onerror = function() {
+        var loadingElement = document.getElementById('loading');
+        if (loadingElement) {
+          loadingElement.remove();
+        }
+        element.insertAdjacentHTML('afterend', '<div class="mt-3 text-danger">データの取得に失敗しました。</div>');
+      };
+      xhr.send();
+    }
+
+    function copyLogsToClipboard(file) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/all_logs?s=' + file, false); // false makes the request synchronous
+      xhr.send(null);
+
+      if (xhr.status === 200) {
+        var text = xhr.responseText.replace(/<br>/g, '\n'); // <br> を改行コードに変換
+        var textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showTemporaryMessage('発言ログがクリップボードにコピーされました。'); // コピー成功メッセージを表示
+      } else {
+        showTemporaryMessage('発言ログの取得に失敗しました。'); // コピー失敗メッセージを表示
+        console.error('Failed to copy: ', xhr.statusText);
+      }
+    }
+
+    function showTemporaryMessage(message) {
+      const messageElement = document.createElement('div');
+      messageElement.textContent = message;
+      messageElement.style.position = 'fixed';
+      messageElement.style.top = '50%';
+      messageElement.style.left = '50%';
+      messageElement.style.transform = 'translate(-50%, -50%)';
+      messageElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
+      messageElement.style.color = 'white';
+      messageElement.style.padding = '10px';
+      messageElement.style.borderRadius = '5px';
+      messageElement.style.zIndex = '1000';
+      document.body.appendChild(messageElement);
+
+      setTimeout(() => {
+        document.body.removeChild(messageElement);
+      }, 3000);
+    }
+  </script>
+    
+    <script>
+      function changeTitle(file, element) {
+        // element はクリックされた span 要素を参照
+        var currentTitle = element.textContent.trim();
+        var newTitle = prompt("タイトルを入力してください:", currentTitle);
+      
+        if (newTitle === null || newTitle === "") {
+          return; // キャンセルされた場合は処理を中断
+        }
+      
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/update_title', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function() {
+          if (this.status == 200) {
+            // 成功した場合、タイトルテキストを更新
+            element.textContent = '　' + newTitle + ''; // 更新されたタイトルでテキストを設定
+          } else {
+            // エラー処理
+            alert("タイトルの更新に失敗しました。");
+          }
+        };
+        xhr.send(JSON.stringify({file: file, title: newTitle}));
+      }
+      </script>
+    
+    
+    
+</head>
+<body>
+    <div class="container mt-4">
+      <a href="/" class="btn btn-secondary mb-3">TOPに戻る</a>
+      <h1 class="mb-4">録音リスト</h1>
+
+
+
+      <!-- 検索ボックスを更新 -->
+      <div class="search-box">
+        <input type="text" id="search-input" class="form-control mb-3" placeholder="タイトル検索..." onkeyup="filterList()" lang="en" autocomplete="off">
+      </div>
+
+      <script>
+
+      function filterList() {
+        var input, filter, div, a, i, txtValue;
+        input = document.getElementById("search-input");
+        filter = input.value.toUpperCase();
+        div = document.getElementsByClassName("date-header");
+        for (i = 0; i < div.length; i++) {
+            a = div[i].getElementsByTagName("span")[1]; // タイトルを含むspan要素を指定
+            txtValue = a.textContent || a.innerText;
+            if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                div[i].style.display = "";
+            } else {
+                div[i].style.display = "none";
+            }
+        }
+      }
+
+// ページがロードされたときにテキストエリアにフォーカスを当てる
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('search-input').focus();
+});
+</script>
+
+
+
+      {% for file, formatted_datetime, title, total_minutes in formatted_files | reverse %}
+          {% set split_datetime = formatted_datetime.split(' ') %}
+          {% set date_part = split_datetime[0] %}
+          {% set time_part = split_datetime[1] %}
+          {% set hour = time_part.split('時')[0] %}
+          <div class="date-header">
+              <a href="#" class="list-group-item list-group-item-action">{{ date_part }} {{ hour }}時頃
+                <span class="mt-2" onclick="changeTitle('{{ file }}', this)">　<span id="title-{{ file }}" class="{{ 'font-large' if title and title != '名無し' else '' }}">{{ title if title else '名無し' }}</span>（{{ total_minutes }}分）</span>
+              </a>
+              <a href="/all_logs?s={{ file }}" class="btn btn-primary btn-sm"><i class="fas fa-file-alt"></i> 表示</a>
+              <a href="javascript:void(0)" onclick="copyLogsToClipboard('{{ file }}')" class="btn btn-primary btn-sm"><i class="fas fa-copy"></i> コピー</a>
+              <a href="javascript:void(0)" onclick="generateTitle('{{ file }}', this)" class="btn btn-success btn-sm"><i class="fas fa-heading"></i> タイトル付与</a>
+              <a href="/archives?s={{ file }}" class="btn btn-success btn-sm"><i class="fas fa-edit"></i> 編集</a>
+              <a href="/md?s={{ file }}" class="btn btn-info btn-sm"><i class="fas fa-project-diagram"></i> Mermaid</a>
+              <a href="javascript:void(0)" onclick="fetchImportantLogs('{{ file }}', this)" class="btn btn-primary btn-sm"><i class="fas fa-highlighter"></i> マーク箇所</a>
+              
+          </div>
+      {% endfor %}
+  
+
+    </div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.0/js/bootstrap.min.js"></script>
+</body>
+</html>
+
