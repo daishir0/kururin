@@ -1,6 +1,7 @@
-# eventletを最初にインポートし、monkey_patchを実行
+# eventletを最初にインポートし、socketを除外してmonkey_patch
 import eventlet
-eventlet.monkey_patch()
+# socketモジュールのモンキーパッチングを無効化
+eventlet.monkey_patch(socket=False, time=True, thread=True)
 
 from flask import Flask, request, render_template, jsonify, send_from_directory, abort, flash
 import openai
@@ -432,19 +433,22 @@ def get_important_logs():
     if not start_datetime_str:
         return "No start date provided", 400
     
-    # get_continuous_filesを使用
-    text, file_count, total_minutes = get_continuous_files(
-        start_datetime_str,
-        directory,
-        debug=False
-    )
-    
-    if text:
-        # 【と】で囲まれたテキストを抜き出す
-        pattern = r'【(.*?)】'
-        matches = re.findall(pattern, format_transcripts(Markup.escape(text)))
-        return matches
-    return []
+    try:
+        # get_continuous_filesを使用
+        text, file_count, total_minutes = get_continuous_files(
+            start_datetime_str,
+            directory,
+            debug=False
+        )
+        
+        if text:
+            # 【と】で囲まれたテキストを抜き出す
+            pattern = r'【(.*?)】'
+            matches = re.findall(pattern, format_transcripts(Markup.escape(text)))
+            return matches
+        return []
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/latest_log')
