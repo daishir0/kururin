@@ -3,7 +3,7 @@ import eventlet
 # socketモジュールのモンキーパッチングを無効化
 eventlet.monkey_patch(socket=False, time=True, thread=True)
 
-from flask import Flask, request, render_template, jsonify, send_from_directory, abort, flash
+from flask import Flask, request, render_template, jsonify, send_from_directory, abort, flash, make_response
 import openai
 from openai import OpenAI
 import json
@@ -98,7 +98,19 @@ def login_required(f):
 
 @app.before_request
 def before_request():
-    if 'dirname' not in session and request.endpoint not in ['login', 'static', 'admin']:
+    # adminで始まるエンドポイントはBasic認証で処理するため除外
+    # 強制的にログ出力
+    if request.path.startswith('/admin'):
+        print(f">>> BEFORE REQUEST - endpoint: {request.endpoint}, path: {request.path}")
+        print(f">>> Session dirname: {'dirname' in session}")
+        print(f">>> Admin path check: {request.path.startswith('/admin')}")
+    
+    # デバッグ用ログ
+    logger_utils.debug(f"Before request - endpoint: {request.endpoint}, path: {request.path}")
+    
+    if 'dirname' not in session and request.endpoint not in ['login', 'static'] and not (request.endpoint and request.endpoint.startswith('admin')) and not request.path.startswith('/admin'):
+        print(f">>> REDIRECTING TO LOGIN - endpoint: {request.endpoint}, path: {request.path}")
+        logger_utils.debug(f"Redirecting to login - endpoint: {request.endpoint}, path: {request.path}")
         return redirect(url_for('login'))
     
     
@@ -1802,6 +1814,107 @@ def reset_password():
         flash('パスワード再設定中にエラーが発生しました', 'error')
     
     return redirect(url_for('admin'))
+
+# ユーザー統計API
+@app.route('/admin/user_stats/<username>')
+def get_user_stats(username):
+    """指定ユーザーの過去30日間のファイル生成統計を取得する"""
+    # 強制的にログ出力
+    print(f">>> API ENDPOINT CALLED for username: {username}")
+    print(f">>> Authorization: {request.authorization}")
+    print(f">>> Headers: {dict(request.headers)}")
+    print(f">>> Path: {request.path}")
+    
+    # デバッグ用ログ
+    logger_utils.info(f"API called for username: {username}")
+    logger_utils.info(f"Authorization header: {request.authorization}")
+    logger_utils.info(f"Request headers: {dict(request.headers)}")
+    
+    # Basic認証のチェック
+    auth = request.authorization
+    if not (auth and check_auth(auth.username, auth.password)):
+        response = make_response(jsonify({'error': 'Authentication required'}), 401)
+        response.headers['WWW-Authenticate'] = 'Basic realm="Admin Access"'
+        return response
+    try:
+        # データディレクトリからユーザーのディレクトリを検索
+        data_dir = str(config.DATA_DIR)
+        user_dirs = []
+        
+        logger_utils.debug(f"Scanning data_dir: {data_dir}")
+        
+        for dirname in os.listdir(data_dir):
+            dirpath = os.path.join(data_dir, dirname)
+            if os.path.isdir(dirpath) and dirname.startswith(username + ":"):
+                user_dirs.append(dirpath)
+                logger_utils.debug(f"Found user dir: {dirname}")
+        
+        if not user_dirs:
+            logger_utils.warning(f"No directories found for username: {username}")
+            return jsonify({'error': f'User not found: {username}'}), 404
+        
+        logger_utils.info(f"Found {len(user_dirs)} directories for user {username}")
+        
+        # 過去30日の日付リストを作成
+        today = datetime.now()
+        dates = []
+        for i in range(30):
+            date = today - timedelta(days=i)
+            dates.append(date.strftime('%Y%m%d'))
+        dates.reverse()  # 古い順にソート
+        
+        logger_utils.debug(f"Date range: {dates[0]} to {dates[-1]}")
+        
+        # 日別ファイル数を集計
+        daily_stats = {date: 0 for date in dates}
+        total_files_processed = 0
+        
+        for dirpath in user_dirs:
+            logger_utils.debug(f"Processing directory: {dirpath}")
+            for filename in os.listdir(dirpath):
+                filepath = os.path.join(dirpath, filename)
+                if os.path.isfile(filepath) and (filename.endswith('.txt') or filename.endswith('.mp3')):
+                    try:
+                        # ファイル名から日付を抽出 (YYYYMMDD形式)
+                        date_part = filename[:8]
+                        if date_part in daily_stats:
+                            daily_stats[date_part] += 1
+                            total_files_processed += 1
+                        logger_utils.debug(f"Processed file: {filename}, date: {date_part}")
+                    except Exception as e:
+                        logger_utils.warning(f"Error processing file {filename}: {e}")
+                        continue
+        
+        logger_utils.info(f"Total files processed: {total_files_processed}")
+        
+        # レスポンス用データを作成
+        result = []
+        for date_key in dates:
+            # 日付を表示用にフォーマット
+            try:
+                date_obj = datetime.strptime(date_key, '%Y%m%d')
+                display_date = date_obj.strftime('%m/%d')
+            except:
+                display_date = date_key
+            
+            result.append({
+                'date': display_date,
+                'date_key': date_key,
+                'count': daily_stats[date_key]
+            })
+        
+        return jsonify({
+            'username': username,
+            'period': '過去30日間',
+            'data': result,
+            'total': sum(daily_stats.values())
+        })
+        
+    except Exception as e:
+        import traceback
+        logger_utils.error(f"Error getting user stats for {username}: {e}")
+        logger_utils.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 # ユーザー削除
 @app.route('/admin/delete_user', methods=['POST'])

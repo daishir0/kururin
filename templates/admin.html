@@ -12,6 +12,8 @@
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             padding: 20px;
@@ -74,6 +76,7 @@
                             <tr>
                                 <th>ユーザー名</th>
                                 <th>ファイル数</th>
+                                <th>過去30日</th>
                                 <th>ストレージ使用量</th>
                                 <th>最終アクセス</th>
                                 <th>操作</th>
@@ -84,9 +87,15 @@
                             <tr>
                                 <td>{{ user.username }}</td>
                                 <td>{{ user.file_count }}</td>
+                                <td id="month-stats-{{ loop.index }}">読み込み中...</td>
                                 <td>{{ user.storage_usage }}</td>
                                 <td>{{ user.last_access }}</td>
                                 <td class="action-buttons">
+                                    <!-- 統計ボタン -->
+                                    <button type="button" class="btn btn-info btn-sm" onclick="showUserStats('{{ user.username }}', {{ loop.index }})">
+                                        <i class="fas fa-chart-line"></i> 統計
+                                    </button>
+                                    
                                     <!-- パスワード再設定ボタン -->
                                     <button type="button" class="btn btn-warning btn-sm" data-toggle="modal" data-target="#resetPasswordModal{{ loop.index }}">
                                         <i class="fas fa-key"></i> パスワード再設定
@@ -158,9 +167,204 @@
         </div>
 
         <!-- ナビゲーションリンク -->
+        <!-- 統計モーダル -->
+        <div class="modal fade" id="statsModal" tabindex="-1" role="dialog" aria-labelledby="statsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="statsModalLabel">ユーザー統計</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <h6 id="statsTitle">統計情報</h6>
+                            </div>
+                            <div class="col-md-4 text-right">
+                                <small class="text-muted" id="statsPeriod">期間: 過去30日間</small><br>
+                                <small class="text-muted">合計: <span id="statsTotal">0</span>ファイル</small>
+                            </div>
+                        </div>
+                        <div style="position: relative; height: 400px;">
+                            <canvas id="statsChart"></canvas>
+                        </div>
+                        <div class="mt-3">
+                            <small class="text-muted">※ファイル名の日付（YYYYMMDD形式）を基準に集計</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">閉じる</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="mt-4">
             <a href="/" class="btn btn-secondary">ホームに戻る</a>
         </div>
     </div>
+
+    <script>
+        let currentChart = null;
+        
+        // ページ読み込み時に各ユーザーの30日統計を取得
+        document.addEventListener('DOMContentLoaded', function() {
+            {% for user in users %}
+            loadMonthStats('{{ user.username }}', {{ loop.index }});
+            {% endfor %}
+        });
+        
+        // 過去30日の統計を読み込み
+        function loadMonthStats(username, index) {
+            console.log('Loading month stats for username:', username);
+            const url = `/admin/user_stats/${encodeURIComponent(username)}`;
+            console.log('Requesting URL:', url);
+            
+            // ブラウザの既存の認証情報を使用してリクエスト
+            fetch(url, {
+                credentials: 'same-origin',
+                cache: 'no-cache'
+            })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    console.log('Response headers:', response.headers);
+                    
+                    // レスポンステキストを確認
+                    return response.text().then(text => {
+                        console.log('Response text:', text.substring(0, 500)); // 最初の500文字を表示
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        try {
+                            return JSON.parse(text);
+                        } catch (e) {
+                            console.error('JSON parse error:', e);
+                            throw new Error('Response is not valid JSON: ' + text.substring(0, 100));
+                        }
+                    });
+                })
+                .then(data => {
+                    console.log('Month stats data:', data);
+                    if (data.error) {
+                        document.getElementById(`month-stats-${index}`).textContent = 'エラー: ' + data.error;
+                    } else {
+                        document.getElementById(`month-stats-${index}`).innerHTML = 
+                            `<span class="badge badge-primary">${data.total}</span>ファイル`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading month stats:', error);
+                    document.getElementById(`month-stats-${index}`).textContent = 'エラー';
+                });
+        }
+        
+        // ユーザー統計表示
+        function showUserStats(username, index) {
+            console.log('Fetching stats for username:', username);
+            
+            // ブラウザの既存の認証情報を使用してリクエスト
+            fetch(`/admin/user_stats/${encodeURIComponent(username)}`, {
+                credentials: 'same-origin',
+                cache: 'no-cache'
+            })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received data:', data);
+                    if (data.error) {
+                        alert('統計データの取得に失敗しました: ' + data.error);
+                        return;
+                    }
+                    
+                    // モーダルのタイトルと情報を更新
+                    document.getElementById('statsTitle').textContent = 
+                        `${data.username} の統計情報`;
+                    document.getElementById('statsPeriod').textContent = 
+                        `期間: ${data.period}`;
+                    document.getElementById('statsTotal').textContent = data.total;
+                    
+                    // グラフを作成
+                    createStatsChart(data.data);
+                    
+                    // モーダルを表示
+                    $('#statsModal').modal('show');
+                })
+                .catch(error => {
+                    console.error('Error fetching stats:', error);
+                    alert('統計データの取得中にエラーが発生しました');
+                });
+        }
+        
+        // 統計グラフ作成
+        function createStatsChart(data) {
+            const ctx = document.getElementById('statsChart').getContext('2d');
+            
+            // 既存のチャートを破棄
+            if (currentChart) {
+                currentChart.destroy();
+            }
+            
+            currentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'ファイル生成数',
+                        data: data.map(d => d.count),
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 15
+                            }
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 3,
+                            hoverRadius: 6
+                        }
+                    }
+                }
+            });
+        }
+        
+        // モーダルが閉じられたときにチャートを破棄
+        $('#statsModal').on('hidden.bs.modal', function() {
+            if (currentChart) {
+                currentChart.destroy();
+                currentChart = null;
+            }
+        });
+    </script>
 </body>
 </html>
