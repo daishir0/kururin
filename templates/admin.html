@@ -76,7 +76,7 @@
                             <tr>
                                 <th>ユーザー名</th>
                                 <th>ファイル数</th>
-                                <th>過去30日</th>
+                                <th>過去60日</th>
                                 <th>ストレージ使用量</th>
                                 <th>最終アクセス</th>
                                 <th>操作</th>
@@ -166,6 +166,57 @@
             </div>
         </div>
 
+        <!-- データ削除カード（範囲指定） -->
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-trash-alt"></i> データ削除（範囲指定）
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>警告:</strong> この操作は元に戻せません。慎重に操作してください。
+                </div>
+
+                <form id="deleteRangeForm">
+                    <!-- ユーザー選択 -->
+                    <div class="form-group">
+                        <label for="target_user">対象ユーザー:</label>
+                        <select class="form-control" id="target_user" name="target_user" required>
+                            <option value="">-- 選択してください --</option>
+                            {% for user in users %}
+                            <option value="{{ user.username }}">
+                                {{ user.username }} (ファイル数: {{ user.file_count }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- 日時範囲指定 -->
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="from_datetime">開始日時:</label>
+                            <input type="datetime-local" class="form-control"
+                                   id="from_datetime" name="from_datetime" required>
+                            <small class="form-text text-muted">この日時以降のデータが対象</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="to_datetime">終了日時:</label>
+                            <input type="datetime-local" class="form-control"
+                                   id="to_datetime" name="to_datetime" required>
+                            <small class="form-text text-muted">この日時以前のデータが対象</small>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-warning btn-lg btn-block"
+                            onclick="previewDelete()">
+                        <i class="fas fa-search"></i> 削除対象をプレビュー
+                    </button>
+                </form>
+            </div>
+        </div>
+
         <!-- ナビゲーションリンク -->
         <!-- 統計モーダル -->
         <div class="modal fade" id="statsModal" tabindex="-1" role="dialog" aria-labelledby="statsModalLabel" aria-hidden="true">
@@ -183,7 +234,7 @@
                                 <h6 id="statsTitle">統計情報</h6>
                             </div>
                             <div class="col-md-4 text-right">
-                                <small class="text-muted" id="statsPeriod">期間: 過去30日間</small><br>
+                                <small class="text-muted" id="statsPeriod">期間: 過去60日間</small><br>
                                 <small class="text-muted">合計: <span id="statsTotal">0</span>ファイル</small>
                             </div>
                         </div>
@@ -196,6 +247,119 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">閉じる</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 削除プレビューモーダル -->
+        <div class="modal fade" id="deletePreviewModal" tabindex="-1" role="dialog" aria-labelledby="deletePreviewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title" id="deletePreviewModalLabel">
+                            <i class="fas fa-exclamation-triangle"></i> 削除対象の確認
+                        </h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+
+                    <div class="modal-body">
+                        <!-- 条件サマリー -->
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6>削除条件:</h6>
+                                <ul class="mb-0">
+                                    <li><strong>ユーザー:</strong> <span id="preview_username"></span></li>
+                                    <li><strong>期間:</strong> <span id="preview_period"></span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- ファイル統計 -->
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6>削除されるファイル:</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>ファイル種別</th>
+                                            <th class="text-right">個数</th>
+                                            <th class="text-right">サイズ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="preview_file_stats">
+                                        <!-- JavaScriptで動的生成 -->
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="font-weight-bold">
+                                            <td>合計</td>
+                                            <td class="text-right" id="preview_total_count">-</td>
+                                            <td class="text-right" id="preview_total_size">-</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- ファイル一覧（折りたたみ可能） -->
+                        <div class="card">
+                            <div class="card-header" style="cursor: pointer;"
+                                 data-toggle="collapse" data-target="#fileListCollapse">
+                                <i class="fas fa-list"></i> ファイル一覧を表示
+                                <small class="text-muted">(クリックで展開)</small>
+                            </div>
+                            <div id="fileListCollapse" class="collapse">
+                                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                    <ul id="preview_file_list" class="list-unstyled small">
+                                        <!-- JavaScriptで動的生成 -->
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 確認チェックボックス -->
+                        <div class="custom-control custom-checkbox mt-4">
+                            <input type="checkbox" class="custom-control-input"
+                                   id="confirmDelete" onchange="toggleDeleteButton()">
+                            <label class="custom-control-label text-danger font-weight-bold"
+                                   for="confirmDelete">
+                                上記の内容を確認し、削除を実行することに同意します
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                            キャンセル
+                        </button>
+                        <button type="button" class="btn btn-danger" id="executeDeleteBtn"
+                                disabled onclick="executeDelete()">
+                            <i class="fas fa-trash-alt"></i> 削除を実行
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 削除結果モーダル -->
+        <div class="modal fade" id="deleteResultModal" tabindex="-1" role="dialog" aria-labelledby="deleteResultModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header" id="result_header">
+                        <h5 class="modal-title" id="result_title"></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body" id="result_body">
+                        <!-- JavaScriptで動的生成 -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-dismiss="modal">
+                            閉じる
+                        </button>
                     </div>
                 </div>
             </div>
@@ -344,7 +508,7 @@
                         },
                         x: {
                             ticks: {
-                                maxTicksLimit: 15
+                                maxTicksLimit: 30
                             }
                         }
                     },
@@ -365,6 +529,192 @@
                 currentChart = null;
             }
         });
+
+        // ==================== データ削除機能 ====================
+
+        // プレビュー表示
+        function previewDelete() {
+            const username = document.getElementById('target_user').value;
+            const fromDatetime = document.getElementById('from_datetime').value;
+            const toDatetime = document.getElementById('to_datetime').value;
+
+            if (!username || !fromDatetime || !toDatetime) {
+                alert('すべての項目を入力してください');
+                return;
+            }
+
+            // 日時の妥当性チェック
+            if (fromDatetime >= toDatetime) {
+                alert('終了日時は開始日時より後に設定してください');
+                return;
+            }
+
+            // プレビューAPIを呼び出し
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('from_datetime', fromDatetime);
+            formData.append('to_datetime', toDatetime);
+
+            fetch('/admin/delete_range_preview', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('エラー: ' + data.error);
+                    return;
+                }
+
+                // プレビューモーダルに情報を表示
+                displayPreview(data);
+                $('#deletePreviewModal').modal('show');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('プレビューの取得に失敗しました');
+            });
+        }
+
+        // プレビュー情報を表示
+        function displayPreview(data) {
+            // 条件サマリー
+            document.getElementById('preview_username').textContent = data.username;
+            document.getElementById('preview_period').textContent =
+                `${data.from_datetime} 〜 ${data.to_datetime}`;
+
+            // ファイル統計
+            const statsBody = document.getElementById('preview_file_stats');
+            statsBody.innerHTML = '';
+
+            const fileTypeLabels = {
+                'mp3': '録音データ (.mp3)',
+                'txt': 'テキストデータ (.txt)',
+                'title': 'タイトル (_title.txt)',
+                'mermaid': 'Mermaid図 (_mermaid.txt)',
+                'png': '画像 (.png)',
+                'thumb': 'サムネイル (thumb_*.png)'
+            };
+
+            for (const [type, label] of Object.entries(fileTypeLabels)) {
+                const stat = data.stats[type];
+                if (stat && stat.count > 0) {
+                    const row = `
+                        <tr>
+                            <td>${label}</td>
+                            <td class="text-right">${stat.count}</td>
+                            <td class="text-right">${stat.size}</td>
+                        </tr>
+                    `;
+                    statsBody.innerHTML += row;
+                }
+            }
+
+            // 合計
+            document.getElementById('preview_total_count').textContent = data.total_count;
+            document.getElementById('preview_total_size').textContent = data.total_size;
+
+            // ファイル一覧
+            const fileList = document.getElementById('preview_file_list');
+            fileList.innerHTML = '';
+
+            for (const [type, files] of Object.entries(data.files)) {
+                if (files.length > 0) {
+                    files.sort((a, b) => a.datetime.localeCompare(b.datetime));
+                    files.forEach(file => {
+                        const li = document.createElement('li');
+                        li.textContent = file.filename;
+                        fileList.appendChild(li);
+                    });
+                }
+            }
+
+            // データを保存（削除実行時に使用）
+            window.deletePreviewData = data;
+
+            // チェックボックスをリセット
+            document.getElementById('confirmDelete').checked = false;
+            document.getElementById('executeDeleteBtn').disabled = true;
+        }
+
+        // 削除ボタンの有効/無効切り替え
+        function toggleDeleteButton() {
+            const checkbox = document.getElementById('confirmDelete');
+            document.getElementById('executeDeleteBtn').disabled = !checkbox.checked;
+        }
+
+        // 削除実行
+        function executeDelete() {
+            if (!window.deletePreviewData) {
+                alert('削除データが見つかりません');
+                return;
+            }
+
+            if (!confirm('本当に削除しますか？この操作は取り消せません。')) {
+                return;
+            }
+
+            // 削除ボタンを無効化
+            const deleteBtn = document.getElementById('executeDeleteBtn');
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 削除中...';
+
+            const data = window.deletePreviewData;
+
+            fetch('/admin/delete_range_execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: data.username,
+                    from_datetime: data.from_datetime,
+                    to_datetime: data.to_datetime
+                }),
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(result => {
+                $('#deletePreviewModal').modal('hide');
+
+                if (result.success) {
+                    showResult(true, result);
+                } else {
+                    showResult(false, result);
+                }
+
+                // ページをリロードして最新の情報を表示
+                setTimeout(() => location.reload(), 3000);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                $('#deletePreviewModal').modal('hide');
+                showResult(false, { error: '削除中にエラーが発生しました' });
+            });
+        }
+
+        // 結果表示
+        function showResult(success, result) {
+            const header = document.getElementById('result_header');
+            const title = document.getElementById('result_title');
+            const body = document.getElementById('result_body');
+
+            if (success) {
+                header.className = 'modal-header bg-success text-white';
+                title.innerHTML = '<i class="fas fa-check-circle"></i> 削除完了';
+                body.innerHTML = `
+                    <p><strong>${result.deleted_count}個</strong>のファイルを削除しました。</p>
+                    ${result.failed_count > 0 ? `<p class="text-warning">削除に失敗したファイル: ${result.failed_count}個</p>` : ''}
+                `;
+            } else {
+                header.className = 'modal-header bg-danger text-white';
+                title.innerHTML = '<i class="fas fa-times-circle"></i> 削除失敗';
+                body.innerHTML = `<p class="text-danger">${result.error || '削除中にエラーが発生しました'}</p>`;
+            }
+
+            $('#deleteResultModal').modal('show');
+        }
     </script>
 </body>
 </html>

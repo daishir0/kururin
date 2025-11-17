@@ -1818,7 +1818,7 @@ def reset_password():
 # ユーザー統計API
 @app.route('/admin/user_stats/<username>')
 def get_user_stats(username):
-    """指定ユーザーの過去30日間のファイル生成統計を取得する"""
+    """指定ユーザーの過去60日間のファイル生成統計を取得する"""
     # 強制的にログ出力
     print(f">>> API ENDPOINT CALLED for username: {username}")
     print(f">>> Authorization: {request.authorization}")
@@ -1854,11 +1854,11 @@ def get_user_stats(username):
             return jsonify({'error': f'User not found: {username}'}), 404
         
         logger_utils.info(f"Found {len(user_dirs)} directories for user {username}")
-        
-        # 過去30日の日付リストを作成
+
+        # 過去60日の日付リストを作成
         today = datetime.now()
         dates = []
-        for i in range(30):
+        for i in range(60):
             date = today - timedelta(days=i)
             dates.append(date.strftime('%Y%m%d'))
         dates.reverse()  # 古い順にソート
@@ -1905,7 +1905,7 @@ def get_user_stats(username):
         
         return jsonify({
             'username': username,
-            'period': '過去30日間',
+            'period': '過去60日間',
             'data': result,
             'total': sum(daily_stats.values())
         })
@@ -1953,6 +1953,200 @@ def delete_user():
         flash('ユーザー削除中にエラーが発生しました', 'error')
     
     return redirect(url_for('admin'))
+
+# 範囲指定データ削除機能
+@app.route('/admin/delete_range_preview', methods=['POST'])
+@requires_auth
+def delete_range_preview():
+    """削除対象ファイルをプレビュー"""
+    try:
+        username = request.form.get('username')
+        from_datetime = request.form.get('from_datetime')  # "YYYY-MM-DDTHH:MM"
+        to_datetime = request.form.get('to_datetime')
+
+        # 入力検証
+        if not username or not from_datetime or not to_datetime:
+            return jsonify({'error': '必須パラメータが不足しています'}), 400
+
+        # ユーザーディレクトリを検索
+        data_dir = './data/'
+        user_dir = None
+        for dirname in os.listdir(data_dir):
+            if os.path.isdir(os.path.join(data_dir, dirname)) and dirname.startswith(f"{username}:"):
+                user_dir = dirname
+                break
+
+        if not user_dir:
+            return jsonify({'error': 'ユーザーが見つかりません'}), 404
+
+        dirpath = os.path.join(data_dir, user_dir)
+
+        # 日時をYYYYmmdd-HHMMSS形式に変換
+        from_dt = datetime.strptime(from_datetime, '%Y-%m-%dT%H:%M')
+        to_dt = datetime.strptime(to_datetime, '%Y-%m-%dT%H:%M')
+        from_str = from_dt.strftime('%Y%m%d-%H%M%S')
+        to_str = to_dt.strftime('%Y%m%d-%H%M%S')
+
+        # 対象ファイルを収集
+        target_files = {
+            'mp3': [],
+            'txt': [],
+            'title': [],
+            'mermaid': [],
+            'png': [],
+            'thumb': []
+        }
+
+        for filename in os.listdir(dirpath):
+            filepath = os.path.join(dirpath, filename)
+            if not os.path.isfile(filepath):
+                continue
+
+            # ファイル名から日時部分を抽出（YYYYmmdd-HHMMSS）
+            match = re.match(r'(\d{8}-\d{6})', filename)
+            if not match:
+                continue
+
+            file_datetime = match.group(1)
+
+            # 範囲内かチェック
+            if from_str <= file_datetime <= to_str:
+                file_size = os.path.getsize(filepath)
+                file_info = {
+                    'filename': filename,
+                    'size': file_size,
+                    'datetime': file_datetime
+                }
+
+                if filename.endswith('_mermaid.txt'):
+                    target_files['mermaid'].append(file_info)
+                elif filename.endswith('_title.txt'):
+                    target_files['title'].append(file_info)
+                elif filename.endswith('.txt'):
+                    target_files['txt'].append(file_info)
+                elif filename.endswith('.mp3'):
+                    target_files['mp3'].append(file_info)
+                elif filename.startswith('thumb_') and filename.endswith('.png'):
+                    target_files['thumb'].append(file_info)
+                elif filename.endswith('.png'):
+                    target_files['png'].append(file_info)
+
+        # 統計情報を計算
+        stats = {}
+        total_count = 0
+        total_size = 0
+
+        for file_type, files in target_files.items():
+            count = len(files)
+            size = sum(f['size'] for f in files)
+            total_count += count
+            total_size += size
+
+            stats[file_type] = {
+                'count': count,
+                'size': f"{size / (1024 * 1024):.2f} MB"
+            }
+
+        logger_utils.info(f"Admin previewing delete for user {username} from {from_datetime} to {to_datetime}: {total_count} files")
+
+        return jsonify({
+            'username': username,
+            'from_datetime': from_datetime,
+            'to_datetime': to_datetime,
+            'stats': stats,
+            'total_count': total_count,
+            'total_size': f"{total_size / (1024 * 1024):.2f} MB",
+            'files': target_files
+        })
+
+    except Exception as e:
+        logger_utils.error(f"Error in delete_range_preview: {e}")
+        import traceback
+        logger_utils.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/delete_range_execute', methods=['POST'])
+@requires_auth
+def delete_range_execute():
+    """範囲指定でファイルを削除"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        from_datetime = data.get('from_datetime')
+        to_datetime = data.get('to_datetime')
+
+        # 入力検証
+        if not username or not from_datetime or not to_datetime:
+            return jsonify({'error': '必須パラメータが不足しています'}), 400
+
+        # プレビューと同じロジックで対象ファイルを特定
+        data_dir = './data/'
+        user_dir = None
+        for dirname in os.listdir(data_dir):
+            if os.path.isdir(os.path.join(data_dir, dirname)) and dirname.startswith(f"{username}:"):
+                user_dir = dirname
+                break
+
+        if not user_dir:
+            return jsonify({'error': 'ユーザーが見つかりません'}), 404
+
+        dirpath = os.path.join(data_dir, user_dir)
+
+        from_dt = datetime.strptime(from_datetime, '%Y-%m-%dT%H:%M')
+        to_dt = datetime.strptime(to_datetime, '%Y-%m-%dT%H:%M')
+        from_str = from_dt.strftime('%Y%m%d-%H%M%S')
+        to_str = to_dt.strftime('%Y%m%d-%H%M%S')
+
+        # 削除対象ファイルを収集
+        files_to_delete = []
+        for filename in os.listdir(dirpath):
+            filepath = os.path.join(dirpath, filename)
+            if not os.path.isfile(filepath):
+                continue
+
+            match = re.match(r'(\d{8}-\d{6})', filename)
+            if not match:
+                continue
+
+            file_datetime = match.group(1)
+
+            if from_str <= file_datetime <= to_str:
+                # 対象ファイルタイプかチェック
+                if (filename.endswith('.mp3') or
+                    filename.endswith('.txt') or
+                    filename.endswith('.png')):
+                    files_to_delete.append(filepath)
+
+        logger_utils.info(f"Admin attempting to delete {len(files_to_delete)} files for user {username} from {from_datetime} to {to_datetime}")
+
+        # 削除実行
+        deleted_count = 0
+        failed_files = []
+
+        for filepath in files_to_delete:
+            try:
+                os.remove(filepath)
+                deleted_count += 1
+                logger_utils.info(f"Deleted: {filepath}")
+            except Exception as e:
+                logger_utils.error(f"Failed to delete {filepath}: {e}")
+                failed_files.append(os.path.basename(filepath))
+
+        # 削除ログを記録
+        logger_utils.info(f"Admin deleted {deleted_count} files for user {username} (failed: {len(failed_files)})")
+
+        return jsonify({
+            'success': True,
+            'deleted_count': deleted_count,
+            'failed_count': len(failed_files),
+            'failed_files': failed_files
+        })
+
+    except Exception as e:
+        logger_utils.error(f"Error in delete_range_execute: {e}")
+        import traceback
+        logger_utils.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/edit_md/<filename>', methods=['GET', 'POST'])
 def edit_md(filename):
