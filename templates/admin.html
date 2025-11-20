@@ -91,6 +91,14 @@
                                 <td>{{ user.storage_usage }}</td>
                                 <td>{{ user.last_access }}</td>
                                 <td class="action-buttons">
+                                    <!-- ログインボタン -->
+                                    <form action="/admin/switch_user" method="post" style="display:inline;">
+                                        <input type="hidden" name="username" value="{{ user.username }}">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="fas fa-sign-in-alt"></i> ログイン
+                                        </button>
+                                    </form>
+
                                     <!-- 統計ボタン -->
                                     <button type="button" class="btn btn-info btn-sm" onclick="showUserStats('{{ user.username }}', {{ loop.index }})">
                                         <i class="fas fa-chart-line"></i> 統計

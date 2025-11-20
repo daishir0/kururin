@@ -1769,6 +1769,48 @@ def add_user():
     
     return redirect(url_for('admin'))
 
+# ユーザー切り替え
+@app.route('/admin/switch_user', methods=['POST'])
+@requires_auth
+def switch_user():
+    """指定したユーザーとしてログインする（管理者機能）"""
+    username = request.form.get('username')
+
+    if not username:
+        flash('ユーザー名が指定されていません', 'error')
+        return redirect(url_for('admin'))
+
+    # 既存のユーザーディレクトリを検索
+    data_dir = './data/'
+    user_dir = None
+
+    for dirname in os.listdir(data_dir):
+        dirpath = os.path.join(data_dir, dirname)
+        if os.path.isdir(dirpath) and dirname.startswith(f"{username}:"):
+            user_dir = dirname
+            break
+
+    if not user_dir:
+        flash(f'ユーザー {username} が見つかりません', 'error')
+        return redirect(url_for('admin'))
+
+    try:
+        # セッション情報を対象ユーザーに切り替え
+        session['dirname'] = user_dir
+        session['user_id'] = user_dir
+        session['username'] = username
+        session['follower'] = 0
+
+        logger_utils.info(f"管理者がユーザー {username} としてログインしました")
+        flash(f'{username} としてログインしました', 'success')
+
+        # トップページへリダイレクト
+        return redirect('/')
+    except Exception as e:
+        logger_utils.error(f"ユーザー切り替えエラー: {e}")
+        flash('ユーザー切り替え中にエラーが発生しました', 'error')
+        return redirect(url_for('admin'))
+
 # パスワード再設定
 @app.route('/admin/reset_password', methods=['POST'])
 @requires_auth
