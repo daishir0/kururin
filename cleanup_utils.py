@@ -112,6 +112,49 @@ def get_temp_file_stats():
         "old_files_24h": old_files
     }
 
+def cleanup_old_audio_files_all():
+    """
+    全対象ユーザーの古い音声ファイルを削除
+    ARCHIVE_EXCLUDED_USERS に含まれるユーザーはスキップ
+    """
+    max_age_days = config.AUDIO_RETENTION_DAYS
+    cutoff_time = time.time() - (max_age_days * 86400)
+    total_count = 0
+    data_dir = str(config.DATA_DIR)
+
+    for entry in os.listdir(data_dir):
+        entry_path = os.path.join(data_dir, entry)
+        if not os.path.isdir(entry_path):
+            continue
+
+        # ユーザー名はディレクトリ名の最初の「:」の前
+        username = entry.split(':')[0] if ':' in entry else entry
+
+        # 除外ユーザーチェック
+        if username in config.ARCHIVE_EXCLUDED_USERS:
+            continue
+
+        delete_count = 0
+
+        for filename in os.listdir(entry_path):
+            if not filename.endswith('.mp3'):
+                continue
+            if filename.startswith('temp_audio_file_'):
+                continue
+            file_path = os.path.join(entry_path, filename)
+            if not os.path.isfile(file_path):
+                continue
+            if os.stat(file_path).st_mtime < cutoff_time:
+                os.remove(file_path)
+                delete_count += 1
+
+        if delete_count > 0:
+            logger_utils.info(f"Deleted {delete_count} old audio files for {username}")
+        total_count += delete_count
+
+    logger_utils.info(f"Old audio cleanup completed. Total deleted: {total_count} files")
+    return total_count
+
 if __name__ == "__main__":
     # スタンドアロン実行時のクリーンアップ
     stats = get_temp_file_stats()

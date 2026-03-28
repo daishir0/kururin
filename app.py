@@ -562,6 +562,16 @@ def login():
             except Exception as e:
                 logger_utils.error(f"Failed to write login log: {e}")
 
+            # 全対象ユーザーの古い音声ファイルを削除（バックグラウンド）
+            import threading as _threading
+            def _cleanup_old_audio():
+                try:
+                    import cleanup_utils
+                    cleanup_utils.cleanup_old_audio_files_all()
+                except Exception as e:
+                    logger_utils.error(f"Old audio cleanup failed: {e}")
+            _threading.Thread(target=_cleanup_old_audio, daemon=True).start()
+
             # ディレクトリ内のファイル名をチェック
             for filename in os.listdir(dirpath):
                 if filename.endswith('.txt'):

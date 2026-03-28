@@ -69,6 +69,10 @@ class Config:
     # Audio Processing
     AUDIO_SEGMENT_DURATION = int(os.getenv('AUDIO_SEGMENT_DURATION', 60))
     
+    # Audio Archive
+    AUDIO_RETENTION_DAYS = int(os.getenv('AUDIO_RETENTION_DAYS', 31))
+    ARCHIVE_EXCLUDED_USERS = [u.strip() for u in os.getenv('ARCHIVE_EXCLUDED_USERS', '').split(',') if u.strip()]
+
     # Logging
     LOG_RETENTION_DAYS = int(os.getenv('LOG_RETENTION_DAYS', 7))
     DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
