@@ -3,7 +3,7 @@ import eventlet
 # socketモジュールのモンキーパッチングを無効化
 eventlet.monkey_patch(socket=False, time=True, thread=True)
 
-from flask import Flask, request, render_template, jsonify, send_from_directory, abort, flash, make_response
+from flask import Flask, request, render_template, jsonify, send_from_directory, abort, flash, make_response, send_file, after_this_request
 import openai
 from openai import OpenAI
 import json
@@ -342,6 +342,56 @@ def audio_file(filename):
     """指定されたオーディオファイルを返す"""
     directory = os.path.join('./data/', session['dirname'])
     return send_from_directory(directory, filename)
+
+@app.route('/download_mp3')
+@login_required
+def download_mp3():
+    """会議グループのMP3ファイルを連結してダウンロードする"""
+    start_datetime_str = request.args.get('s')
+    if not start_datetime_str:
+        abort(400)
+
+    directory = os.path.join('./data/', session['dirname'])
+    mp3_files = get_continuous_mp3_files(start_datetime_str, directory)
+
+    if not mp3_files:
+        abort(404)
+
+    tmp_dir = f"/tmp/{session.get('username', 'unknown')}"
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    concat_list_path = os.path.join(tmp_dir, f"concat_{start_datetime_str}.txt")
+    output_path = os.path.join(tmp_dir, f"{start_datetime_str}.mp3")
+
+    with open(concat_list_path, 'w') as f:
+        for mp3 in mp3_files:
+            abs_path = os.path.abspath(os.path.join(directory, mp3))
+            f.write(f"file '{abs_path}'\n")
+
+    command = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", concat_list_path, "-c", "copy", output_path
+    ]
+    try:
+        subprocess.run(command, check=True, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError:
+        abort(500)
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            os.remove(concat_list_path)
+            os.remove(output_path)
+        except OSError:
+            pass
+        return response
+
+    return send_file(
+        output_path,
+        mimetype='audio/mpeg',
+        as_attachment=True,
+        download_name=f"{start_datetime_str}.mp3"
+    )
 
 @app.route('/img/<filename>')
 @login_required
@@ -1515,6 +1565,54 @@ def get_continuous_files(start_datetime_str, base_dir, debug=True):  # デバッ
         print(f"Total text length: {total_chars} characters")
     
     return all_text, len(current_group), len(current_group)  # 1ファイル = 1分
+
+def get_continuous_mp3_files(start_datetime_str, base_dir):
+    """
+    指定された開始時刻から3分以内の間隔で続くMP3ファイルをグループ化し、ファイル名リストを返す
+
+    Args:
+        start_datetime_str (str): 開始時刻（YYYYmmdd-HHMMSS形式）
+        base_dir (str): ファイルが格納されているディレクトリのパス
+
+    Returns:
+        list: ソート済みMP3ファイル名のリスト。見つからない場合は空リスト
+    """
+    try:
+        files = sorted(os.listdir(base_dir))
+    except OSError:
+        return []
+
+    mp3_files = [f for f in files if f.endswith('.mp3')]
+
+    try:
+        target_datetime = datetime.strptime(start_datetime_str, '%Y%m%d-%H%M%S')
+    except ValueError:
+        return []
+
+    current_group = []
+    prev_datetime = None
+    found_target = False
+
+    for file in mp3_files:
+        try:
+            file_datetime = datetime.strptime(file[:-4], '%Y%m%d-%H%M%S')
+
+            if file[:-4] == start_datetime_str:
+                found_target = True
+                current_group = [file]
+                prev_datetime = file_datetime
+                continue
+
+            if found_target:
+                if (file_datetime - prev_datetime) <= timedelta(minutes=3):
+                    current_group.append(file)
+                    prev_datetime = file_datetime
+                else:
+                    break
+        except ValueError:
+            continue
+
+    return sorted(current_group)
 
 def get_meeting_text(filename):
     """指定された会議の発言録を取得（3分以内の間隔のファイルをまとめて）"""
